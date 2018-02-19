@@ -138,7 +138,6 @@ class ActionTracker():
         #         '110': [16],
         #         '111': [],
         #         }
-
        
     def action_mask(self):
         # get context features as string of ints (0/1)
@@ -211,6 +210,6 @@ class ActionTracker():
             res = self.filter_response(response)
             no_set_responses.append(res)
         responses = list(set(no_set_responses))
+        responses.remove('<UNK>')
         
         return sorted(responses)
-        

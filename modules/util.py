@@ -1,4 +1,7 @@
 import json
+import tensorflow as tf
+from typing import Any
+import gc
 
 kb_data = json.load(open('/root/jude/data/dstc2/dstc2_traindev/scripts/config/ontology_dstc2.json'))
 
@@ -105,3 +108,69 @@ def get_entities():
 
     with open('data/dialog-babi-kb-all.txt') as f:
         return filter_([item.split('\t')[-1] for item in f.read().split('\n') ])
+
+
+class TensorBoardSummaryWriter:
+    def __init__(self, root_dir: str, sess: tf.Session = None, graph: tf.Graph = None):
+        self._constant_phs = {}
+        self._constant_summaries = {}
+        self._destroy_session = (sess is None)
+        
+        if sess is None:
+            sess_config = tf.ConfigProto(
+                device_count={'CPU': 1, 'GPU': 0},
+                allow_soft_placement=True,
+                log_device_placement=False
+            )
+            sess_config.gpu_options.visible_device_list = ""
+            sess_config.gpu_options.per_process_gpu_memory_fraction = 0.0000001
+            sess_config.gpu_options.allow_growth = True
+            
+            with tf.device("/cpu:0"):
+                self._session = tf.Session(config=sess_config)
+        else:
+            self._session = sess
+        
+        self._summary_writer = tf.summary.FileWriter(root_dir, graph)
+    
+    def add_summary(self, name: str, value: Any, step: int, dtype=tf.float32):
+        summary_str = self._constant_to_summary_str(name, value, dtype)
+        self._summary_writer.add_summary(summary_str, step)
+        self._summary_writer.flush()
+    
+    def _constant_to_summary_str(self, name: str, value: Any, dtype) -> str:
+        """
+        Make a python variable to a summary string.
+        """
+        with tf.device("/cpu:0"):
+            target_ph = None
+            if name in self._constant_phs:
+                target_ph = self._constant_phs[name]
+            else:
+                target_ph = tf.placeholder(dtype=dtype, name=name, shape=[])
+                self._constant_phs[name] = target_ph
+            
+            if self._session is None:
+                # self._logger.error("[E] Session is none.")
+                return ""
+            
+            target_summary = None
+            if name in self._constant_summaries:
+                target_summary = self._constant_summaries[name]
+            else:
+                target_summary = tf.summary.scalar(name, target_ph)
+                self._constant_summaries[name] = target_summary
+            feed_dict = {
+                target_ph: value
+            }
+            summary_str = self._session.run(target_summary, feed_dict=feed_dict)
+        
+        return summary_str
+    
+    def close(self):
+        self._summary_writer.flush()
+        self._summary_writer.close()
+        if self._destroy_session:
+            self._session.close()
+            tf.reset_default_graph()
+        gc.collect()

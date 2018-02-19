@@ -1,31 +1,26 @@
-# from modules.entities import EntityTracker
 from modules.bow import BoW_encoder
 from modules.lstm_net import LSTM_net
 from modules.embed import UtteranceEmbed
 from modules.actions import ActionTracker
 from modules.data_utils import Data
-import modules.util as util
 
-from modules.lstm_nlu import Lstm_Nlu as EntityTracker
+from modules.bof_nlu import Bof_Nlu as EntityTracker
 
 import numpy as np
 import sys
+import random
+import argparse
 
 
 class Trainer():
 
     def __init__(self):
     
-        # self.net = LSTM_net(obs_size=128,
-        #                     action_size=59,
-        #                     nb_hidden=128)
-    
         et = EntityTracker()
         self.bow_enc = BoW_encoder()
         self.emb = UtteranceEmbed()
-        print('DODOO')
+        
         at = ActionTracker(et)
-        print('Shit')
         
         self.train_dataset, train_dialog_indices = Data(et, at).train_set
         self.test_dataset, test_dialog_indices = Data(et, at).test_set
@@ -37,7 +32,10 @@ class Trainer():
         print('=========================\n')
         print('length of Test dialog indices : ', len(test_dialog_indices))
         print('=========================\n')
-
+        
+        # Shuffle Training Dataset
+        random.shuffle(train_dialog_indices)
+        
         self.dialog_indices_tr = train_dialog_indices
         self.dialog_indices_dev = test_dialog_indices
 
@@ -63,10 +61,16 @@ class Trainer():
         self.action_projection = np.transpose(action_projection)
         self.action_size = action_size
 
-    def train(self):
+    def train(self, exp_name):
 
         print('\n:: training started\n')
         epochs = 100
+        
+        import joblib
+        
+        per_response_list = []
+        per_dialogue_list = []
+        
         for j in range(epochs):
             # iterate through dialogs
             num_tr_examples = len(self.dialog_indices_tr)
@@ -76,18 +80,23 @@ class Trainer():
                 start, end = dialog_idx['start'], dialog_idx['end']
                 # train on dialogue
                 loss += self.dialog_train(self.train_dataset[start:end])
+                
                 # print #iteration
                 sys.stdout.write('\r{}.[{}/{}]'.format(j+1, i+1, num_tr_examples))
-
+            
             print('\n\n:: {}.tr loss {}'.format(j+1, loss/num_tr_examples))
             # evaluate every epoch
             accuracy = self.evaluate()
+            per_response_list.append(accuracy[0])
+            per_dialogue_list.append(accuracy[1])
+            
             print(':: {}.dev accuracy {}\n'.format(j+1, accuracy))
         
+        print('Max Dialogue Accuracy : ', max(per_dialogue_list))
+        joblib.dump(per_response_list, 'performance/new_nlu_0219/per_response_list_58_' + exp_name)
+        joblib.dump(per_dialogue_list, 'performance/new_nlu_0219/per_dialogue_list_58_' + exp_name)
+        
         self.net.save()
-            # if accuracy > 0.99:
-            #     self.net.save()
-            #     break
 
     def dialog_train(self, dialog):
         # create entity tracker
@@ -105,13 +114,16 @@ class Trainer():
         # iterate through dialog
         for (u,r) in dialog:
             i += 1
+            
+            if r == '<UNK>':
+                continue
+                
             u_ent = et.extract_entities(u)
             u_ent_features = et.context_features()
             u_emb = self.emb.encode(u)
             u_bow = self.bow_enc.encode(u)
             # concat features
             features = np.concatenate((u_ent_features, u_emb, u_bow), axis=0)
-            
             
             if i ==1:
                 loss += self.net.train_step(features, r, self.action_projection)
@@ -150,6 +162,7 @@ class Trainer():
             i = 0
             for (u,r) in dialog:
                 i += 1
+                
                 if u == 'api_call no result':
                     correct_examples += 1
                     continue
@@ -199,4 +212,9 @@ if __name__ == '__main__':
     # setup trainer
     trainer = Trainer()
     # start training
-    trainer.train()
+
+    arg_parser = argparse.ArgumentParser(description="Dialogue System.")
+    arg_parser.add_argument("-exp_name", "--exp_name", dest="exp_name")
+    args = arg_parser.parse_args()
+    
+    trainer.train(args.exp_name)

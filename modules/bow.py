@@ -13,6 +13,7 @@ import numpy as np
         3.3 set index as 1 in ndarray
 '''
 
+
 class BoW_encoder():
 
     def __init__(self):

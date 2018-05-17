@@ -4,7 +4,8 @@ from modules.embed import UtteranceEmbed
 from modules.actions import ActionTracker
 from modules.data_utils import Data
 
-from modules.bof_nlu import Bof_Nlu as EntityTracker
+# from modules.bof_nlu import Bof_Nlu as EntityTracker
+from modules.char_lstm_lstm_nlu import Char_Lstm_Nlu as EntityTracker
 
 import numpy as np
 import sys
@@ -42,8 +43,10 @@ class Trainer():
         obs_size = self.emb.dim + self.bow_enc.vocab_size + et.num_features
         self.action_templates = at.get_action_templates()
         action_size = at.action_size
-        nb_hidden = 128
-
+        
+        # nb_hidden = 128
+        nb_hidden = 150
+        
         print('=========================\n')
         print('Action_templates: ', action_size)
         print('=========================\n')
@@ -61,7 +64,7 @@ class Trainer():
         self.action_projection = np.transpose(action_projection)
         self.action_size = action_size
 
-    def train(self, exp_name):
+    def train(self, exp_name, model_name):
 
         print('\n:: training started\n')
         epochs = 100
@@ -71,6 +74,8 @@ class Trainer():
         per_response_list = []
         per_dialogue_list = []
         
+        early_stop = False
+        early_stop_count = 0
         for j in range(epochs):
             # iterate through dialogs
             num_tr_examples = len(self.dialog_indices_tr)
@@ -89,14 +94,23 @@ class Trainer():
             accuracy = self.evaluate()
             per_response_list.append(accuracy[0])
             per_dialogue_list.append(accuracy[1])
+            max_dialogue = max(per_dialogue_list)
             
+            if len(per_dialogue_list) > 1:
+                prev_max_dialogue = sorted(per_dialogue_list, reverse=True)[1]
+            
+            if max_dialogue > 2.0 and accuracy[1] > prev_max_dialogue:
+                early_stop_count += 1
+                self.net.save(model_name)
+           
             print(':: {}.dev accuracy {}\n'.format(j+1, accuracy))
+            print('current max dialogue accuracy : {}\n'.format(sorted(per_dialogue_list, reverse=True)[0]))
         
         print('Max Dialogue Accuracy : ', max(per_dialogue_list))
-        joblib.dump(per_response_list, 'performance/new_nlu_0219/per_response_list_58_' + exp_name)
-        joblib.dump(per_dialogue_list, 'performance/new_nlu_0219/per_dialogue_list_58_' + exp_name)
+        joblib.dump(per_response_list, 'emnlp_performance/with_slot/per_response_list_' + exp_name)
+        joblib.dump(per_dialogue_list, 'emnlp_performance/with_slot/per_dialogue_list_' + exp_name)
         
-        self.net.save()
+        # self.net.save()
 
     def dialog_train(self, dialog):
         # create entity tracker
@@ -140,6 +154,7 @@ class Trainer():
         dialog_accuracy = 0.
         correct_dialogue_count = 0
         
+        # for each dialog
         for dialog_idx in self.dialog_indices_dev:
 
             start, end = dialog_idx['start'], dialog_idx['end']
@@ -168,7 +183,7 @@ class Trainer():
                     continue
                 
                 if r == '<UNK>':
-                    correct_examples += 1
+                    # correct_examples += 1
                     continue
                 
                 # encode utterance
@@ -180,12 +195,12 @@ class Trainer():
                 features = np.concatenate((u_ent_features, u_emb, u_bow), axis=0)
                 
                 if i == 1:
-                    prediction = self.net.forward(features, self.action_projection)
+                    prediction, user_attention_weights, action_weights = self.net.forward(features, self.action_projection)
                     pred_list.append(prediction)
                 else:
                     action_one_hot = np.zeros(self.action_size)
                     action_one_hot[pred_list[-1]] = 1
-                    prediction = self.net.forward(features, self.action_projection, action_one_hot)
+                    prediction, user_attention_weights, action_weights = self.net.forward(features, self.action_projection, action_one_hot)
                     pred_list.append(prediction)
                     
                 correct_examples += int(prediction == r)
@@ -215,6 +230,7 @@ if __name__ == '__main__':
 
     arg_parser = argparse.ArgumentParser(description="Dialogue System.")
     arg_parser.add_argument("-exp_name", "--exp_name", dest="exp_name")
+    arg_parser.add_argument("-model_name", "--model_name", dest="model_name")
     args = arg_parser.parse_args()
     
-    trainer.train(args.exp_name)
+    trainer.train(args.exp_name, args.model_name)

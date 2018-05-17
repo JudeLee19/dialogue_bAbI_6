@@ -48,7 +48,7 @@ import json
      41.'Sure , <rest_name> is on <info_address>',
      42.'The phone number of <rest_name> is <info_phone>',
      43.'The post code of <rest_name> is <info_post_code>',
-     44.'The price range at <rest_name> is <price> .',
+     44.'The price range at <rest_name> is <price> .'f,
      45.'There are restaurants . That area would you like?',
      46.'There are restaurants in the <price> price range and the <area> of town . What type of food would you like?',
      47.'There are restaurants serving <food> food . What area do you want?',
@@ -69,7 +69,6 @@ import json
     [3] : price
 '''
 
-
 class ActionTracker():
 
     def __init__(self, ent_tracker):
@@ -80,7 +79,7 @@ class ActionTracker():
 
         informable_data = kb_data['informable']
 
-        self.area_list = informable_data['area']
+        area_list = informable_data['area']
         food_list = informable_data['food']
         self.price_list = informable_data['pricerange']
 
@@ -89,7 +88,15 @@ class ActionTracker():
         food_list.append('north_american')
         food_list.append('middle_eastern')
         food_list.append('the_americas')
+        food_list.append('northern_european')
 
+        area_list.append('west')
+        area_list.append('east')
+        area_list.append('south')
+        area_list.append('north')
+        area_list.append('centre')
+        
+        self.area_list = area_list
         self.food_list = food_list
 
         self.post_code_list = [
@@ -127,18 +134,7 @@ class ActionTracker():
         self.action_size = len(self.action_templates)
         # action mask
         self.am = np.zeros([self.action_size], dtype=np.float32)
-        # action mask lookup, built on intuition
-        # self.am_dict = {
-        #         '000': [16],
-        #         '001': [16, 15],
-        #         '010': [16],
-        #         '011': [16],
-        #         '100': [16],
-        #         '101': [16],
-        #         '110': [16],
-        #         '111': [],
-        #         }
-       
+        
     def action_mask(self):
         # get context features as string of ints (0/1)
         ctxt_f = ''.join([ str(flag) for flag in self.et.context_features().astype(np.int32) ])
@@ -154,6 +150,11 @@ class ActionTracker():
     def filter_response(self, res):
         response = res
         response = response.strip()
+        
+        # if response == 'Could you please repeat that?':
+        #     a = 1
+        # else:
+        #     a = 0
 
         if 'food .' in response:
             response = response.replace('food .', 'food')
@@ -201,6 +202,9 @@ class ActionTracker():
 
         if 'api_call' in response and 'api_call no result' != response:
             response = 'api_call <food> <area> <price>'
+        
+        # if a == 1:
+        #     print(response)
         
         return response
         

@@ -10,6 +10,7 @@ import modules.util as util
     3. Organize trainset as list of dialogues
 '''
 
+
 class Data():
 
     def __init__(self, entity_tracker, action_tracker):
@@ -49,4 +50,5 @@ class Data():
         if filtered_response in self.action_templates:
             return self.action_templates.index(filtered_response)
         else:
+            # print(filtered_response)
             return '<UNK>'
